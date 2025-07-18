@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Infrastruct
+is a logic-based belief-agnostic jurisprudence framework that interprets various divine sources through the lens of clear logical systems in order to create a coherent legal code.
 
-## Getting Started
+It hosts ALIF (Artificial Learning Integration for Fataawa) v2, an AI powered search engine to direct you towards rulings from different religions based on your query.
 
-First, run the development server:
+Infrastruct is
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- based on monotheism
+- not a religion
+- isn't against religion
+- no fixed doctrine
+- logic filtered
+- comparative friendly
+- explains rather than dictates
+- something for everyone to use
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Infrastruct is for logicians who want to follow Abrahamic religions. They struggle with the problems and inconsistencies in those religions that push them away. They want to follow objective morality. They aren’t evil, or at least aren’t trying to be. They want to do good in the world and submit to one God, but they don’t want to feel villainised for doing something they don’t believe or being pushed into something they don’t agree with.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Infrastruct uses:
+- Next.js
+- React
+- TypeScript
+- Google Search API (stop ratelimiting me)
+- Gemini 2.5 Flash Lite

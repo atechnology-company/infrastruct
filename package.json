@@ -1,6 +1,6 @@
 {
   "name": "infrastruct",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -9,19 +9,29 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.4.1"
+    "@ai-sdk/google": "^1.2.22",
+    "@tailwindcss/postcss": "^4.1.11",
+    "ai": "^4.3.19",
+    "autoprefixer": "^10.4.21",
+    "cheerio": "^1.1.0",
+    "framer-motion": "^11.18.2",
+    "fs": "0.0.1-security",
+    "lucide-react": "^0.263.1",
+    "marked": "^16.0.0",
+    "next": "^15.4.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "15.4.1",
-    "@eslint/eslintrc": "^3"
+    "@tailwindcss/cli": "^4.1.11",
+    "@types/marked": "^6.0.0",
+    "@types/node": "^20.19.8",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.4.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3"
   }
 }
