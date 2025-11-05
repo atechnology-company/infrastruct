@@ -6,7 +6,20 @@ module.exports = {
     "./src/components/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        'instrument-sans': [
+          'Instrument Sans',
+          'Arial',
+          'Helvetica',
+          'sans-serif',
+        ],
+        'chivo-mono': [
+          'Chivo Mono',
+          'monospace',
+        ],
+      },
+    },
   },
   plugins: [],
 };

@@ -184,7 +184,7 @@ export function InfrastructLogo() {
         {letters.map((letter, index) => (
           <motion.span
             key={index}
-            className="text-4xl font-light text-white"
+            className="text-5xl font-extrabold text-white"
             animate={
               isHovered
                 ? {
