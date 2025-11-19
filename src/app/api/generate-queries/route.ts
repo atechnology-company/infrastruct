@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     // System prompt for generating search queries
     const systemPrompt = `You are Alif, the AI-powered search engine for Infrastruct.
 Your task is to generate a list of concise search queries based on the user's prompt.
-Each query should be suitable for searching across Abrahamic religions (Judaism, Christianity, Islam).
+Each query should be suitable for searching across major world religions (Judaism, Christianity, Islam, Hinduism, Sikhism, Buddhism).
 If the prompt contains multiple questions or topics, generate a separate query for each.
 
 For each religion, also provide a number (1-5) for how many search results should be fetched for that query, based on how much information is likely needed to answer the prompt well.
@@ -32,7 +32,11 @@ Respond with a single valid JSON object:
   "queries": {
     "judaism": { "query": string, "numResults": number },
     "christianity": { "query": string, "numResults": number },
-    "islam": { "query": string, "numResults": number }
+    "islam": { "query": string, "numResults": number },
+    "hinduism": { "query": string, "numResults": number },
+    "sikhism": { "query": string, "numResults": number },
+    "buddhism": { "query": string, "numResults": number },
+    "philosophy": { "query": string, "numResults": number }
   }
 }
 
@@ -48,7 +52,7 @@ Generate search queries and number of results as described above.`;
     let result;
     try {
       result = await generateText({
-        model: gemini("gemini-2.5-flash-lite-preview-06-17"),
+        model: gemini("gemini-2.5-flash-lite"),
         system: systemPrompt,
         prompt: userPrompt,
       });
@@ -86,7 +90,7 @@ Generate search queries and number of results as described above.`;
         responseJson &&
         typeof responseJson === "object" &&
         responseJson.queries &&
-        ["judaism", "christianity", "islam"].every(
+        ["judaism", "christianity", "islam", "hinduism", "sikhism", "buddhism", "philosophy"].every(
           (k) =>
             responseJson.queries &&
             typeof responseJson.queries[k] === "object" &&

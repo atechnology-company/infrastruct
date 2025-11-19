@@ -24,7 +24,34 @@ const RELIGION_SITES: Record<string, string[]> = {
     "al-islam.org",
     "sunnah.com",
   ],
+  hinduism: [
+    "vedabase.io",
+    "hinduwebsite.com",
+    "bhagavad-gita.org",
+    "swaminarayan.faith",
+    "vedanta.org",
+    "hinduismtoday.com",
+    "sacred-texts.com",
+  ],
+  sikhism: [
+    "sikhnet.com",
+    "sikhs.org",
+    "searchgurbani.com",
+    "srigranth.org",
+    "sikhiwiki.org",
+    "gurugranthsahib.org",
+  ],
+  buddhism: [
+    "accesstoinsight.org",
+    "dhammatalks.org",
+    "buddhanet.net",
+    "tricycle.org",
+    "lionsroar.com",
+    "suttacentral.net",
+    "buddhism.about.com",
+  ],
 };
+
 
 
 import { NextRequest } from "next/server";

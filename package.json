@@ -1,6 +1,6 @@
 {
   "name": "infrastruct",
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-beta",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
