@@ -145,7 +145,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                             <label className={`flex items-center justify-between p-4 rounded-lg border border-gray-700 hover:border-gray-600 ${vServerStatus === "offline" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
                                 <div>
                                     <div className="font-semibold flex items-center gap-2">
-                                        V Lang
+                                        V
                                         <span className="text-xs bg-yellow-900/50 text-yellow-400 px-2 py-0.5 rounded">
                                             EXPERIMENTAL
                                         </span>

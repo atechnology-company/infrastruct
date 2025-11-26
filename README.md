@@ -32,3 +32,4 @@ Infrastruct uses:
 - let model pick a religion to focus on if the search is specific to something e.g. "what is kashrut" search only judaism.
 - sync veb functionality to the next
 - the ability to puzzle together beliefs and standpoinrs together like a jigsaw to create your own legal code based of searches and ideas you like from different frameworks.
+- shareable links and a db

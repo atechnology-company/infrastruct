@@ -24,7 +24,9 @@ Your task is to generate a list of concise search queries based on the user's pr
 Each query should be suitable for searching across major world religions (Judaism, Christianity, Islam, Hinduism, Sikhism, Buddhism).
 If the prompt contains multiple questions or topics, generate a separate query for each.
 
-For each religion, also provide a number (1-5) for how many search results should be fetched for that query, based on how much information is likely needed to answer the prompt well.
+For each religion, also provide a number (0-5) for how many search results should be fetched for that query, based on how much information is likely needed to answer the prompt well.
+
+IMPORTANT: If the user's query is specific to one or a few religions (e.g., "kashrut" is specific to Judaism, "baptism" to Christianity), set numResults to 0 for religions that are NOT relevant. Only search religions that would have meaningful content for the query.
 
 RESPONSE FORMAT:
 Respond with a single valid JSON object:
@@ -42,7 +44,9 @@ Respond with a single valid JSON object:
 
 Guidelines:
 - Each query should be clear, specific, and suitable for comparative religious search.
-- numResults should be between 1 and 5, and reflect the complexity or breadth of the topic for each religion.
+- numResults should be between 0 and 5. Use 0 to skip religions that are not relevant to the query.
+- For religion-specific terms (e.g., "kashrut", "halal", "dharma"), only search the relevant religion(s).
+- For general philosophical or ethical questions, search all religions.
 - Do NOT include any text outside the JSON object.
 `;
 

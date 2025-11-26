@@ -67,17 +67,17 @@ export function InfrastructLogo() {
           animate={
             isHovered
               ? {
-                  rotate: randomValues["rotate1"] || 0,
-                  x: randomValues["x1"] || 0,
-                  y: randomValues["y1"] || 0,
-                  backgroundColor: "#ef4444",
-                }
+                rotate: randomValues["rotate1"] || 0,
+                x: randomValues["x1"] || 0,
+                y: randomValues["y1"] || 0,
+                backgroundColor: "#ef4444",
+              }
               : {
-                  rotate: 0,
-                  x: 0,
-                  y: 0,
-                  backgroundColor: "#fff",
-                }
+                rotate: 0,
+                x: 0,
+                y: 0,
+                backgroundColor: "#fff",
+              }
           }
           transition={{ duration: 0.3, ease: "easeOut" }}
         />
@@ -96,15 +96,15 @@ export function InfrastructLogo() {
           animate={
             isHovered
               ? {
-                  rotate: randomValues["rotate2"] || 0,
-                  x: randomValues["x2"] || 0,
-                  y: randomValues["y2"] || 0,
-                }
+                rotate: randomValues["rotate2"] || 0,
+                x: randomValues["x2"] || 0,
+                y: randomValues["y2"] || 0,
+              }
               : {
-                  rotate: 0,
-                  x: 0,
-                  y: 0,
-                }
+                rotate: 0,
+                x: 0,
+                y: 0,
+              }
           }
           transition={{ duration: 0.3, ease: "easeOut" }}
         >
@@ -136,17 +136,17 @@ export function InfrastructLogo() {
           animate={
             isHovered
               ? {
-                  rotate: randomValues["rotate3"] || 0,
-                  x: randomValues["x3"] || 0,
-                  y: randomValues["y3"] || 0,
-                  backgroundColor: "#10b981",
-                }
+                rotate: randomValues["rotate3"] || 0,
+                x: randomValues["x3"] || 0,
+                y: randomValues["y3"] || 0,
+                backgroundColor: "#10b981",
+              }
               : {
-                  rotate: 0,
-                  x: 0,
-                  y: 0,
-                  backgroundColor: "#fff",
-                }
+                rotate: 0,
+                x: 0,
+                y: 0,
+                backgroundColor: "#fff",
+              }
           }
           transition={{ duration: 0.3, ease: "easeOut" }}
         />
@@ -164,17 +164,17 @@ export function InfrastructLogo() {
           animate={
             isHovered
               ? {
-                  rotate: randomValues["rotate4"] || 45,
-                  x: randomValues["x4"] || 0,
-                  y: randomValues["y4"] || 0,
-                  backgroundColor: "#f59e0b",
-                }
+                rotate: randomValues["rotate4"] || 45,
+                x: randomValues["x4"] || 0,
+                y: randomValues["y4"] || 0,
+                backgroundColor: "#f59e0b",
+              }
               : {
-                  rotate: 45,
-                  x: 0,
-                  y: 0,
-                  backgroundColor: "#fff",
-                }
+                rotate: 45,
+                x: 0,
+                y: 0,
+                backgroundColor: "#fff",
+              }
           }
           transition={{ duration: 0.3, ease: "easeOut" }}
         />
@@ -184,19 +184,19 @@ export function InfrastructLogo() {
         {letters.map((letter, index) => (
           <motion.span
             key={index}
-            className="text-5xl font-extrabold text-white"
+            className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white"
             animate={
               isHovered
                 ? {
-                    x: randomValues[`x${index + 5}`] || 0,
-                    y: randomValues[`y${index + 5}`] || 0,
-                    rotate: randomValues[`rotate${index + 5}`] || 0,
-                  }
+                  x: randomValues[`x${index + 5}`] || 0,
+                  y: randomValues[`y${index + 5}`] || 0,
+                  rotate: randomValues[`rotate${index + 5}`] || 0,
+                }
                 : {
-                    x: 0,
-                    y: 0,
-                    rotate: 0,
-                  }
+                  x: 0,
+                  y: 0,
+                  rotate: 0,
+                }
             }
             transition={{
               duration: 0.3,

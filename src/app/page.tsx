@@ -263,15 +263,20 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden">
       {/* Navigation */}
-      <nav className="absolute top-6 right-6 z-50">
-        <div className="flex gap-6 text-gray-400">
-          <button className="hover:text-white transition-colors">
-            documentation
-          </button>
-          <button className="hover:text-white transition-colors">about</button>
+      <nav className="absolute top-4 right-4 md:top-6 md:right-6 z-50">
+        <div className="flex flex-row gap-2 md:gap-6 text-gray-400 text-[10px] md:text-base">
+          <a className="hover:text-white transition-colors" href="https://github.com/atechnology-company/infrastruct/">
+            github
+          </a>
+          <a className="hover:text-white transition-colors" href="https://undivisible.dev/">
+            about me
+          </a>
+          <a className="hover:text-white transition-colors" href="https://atechnology.company/">
+            <span className="text-[#ff5705]">a</span>technology company
+          </a>
           <button
             onClick={() => setAppState("settings")}
-            className="hover:text-white transition-colors"
+            className="hover:text-white transition-colors text-left"
           >
             settings
           </button>
@@ -375,12 +380,18 @@ export default function Home() {
         )}
 
         {(appState === "searching" || appState === "results") && (
-          <motion.div key="searching-screen" initial={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+          <motion.div
+            key="searching-screen"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             <SearchingScreen
               prompt={query}
               onCompleteAction={handleSearchComplete}
               onStop={resetToHome}
-              results={resultsData}
+              results={appState === "results" ? resultsData : null}
             />
           </motion.div>
         )}

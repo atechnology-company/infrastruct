@@ -4,6 +4,13 @@ import { NextRequest } from "next/server";
 
 const gemini = createGoogleGenerativeAI({});
 
+function cleanGeminiJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { query, sources } = await req.json();
@@ -17,7 +24,7 @@ export async function POST(req: NextRequest) {
     - Logic-filtered approach to religious texts
     - Comparative and friendly analysis
     - Explains rather than dictates
-    - Utilizes: Moral Realism, Rationalist Ethics, Value Pluralism, Divine Command Theory, Utilitarianism, Dharma Ethics, Karma Theory, Middle Way Philosophy, Ahimsa (Non-violence), Seva (Selfless Service)
+    - Utilizes: Moral Realism, Rationalist Ethics, Value Pluralism, Utilitarianism, Dharma Ethics, Karma Theory, Middle Way Philosophy, Ahimsa (Non-violence), Seva (Selfless Service), Virtue Ethics
 
     METHODOLOGY:
     1. Analyze the query to understand the core ethical/legal question.
@@ -79,16 +86,16 @@ export async function POST(req: NextRequest) {
               "featured_quote": string,
               "featured_quote_source": { "title": string, "url": string },
               "status": null,
-              "summary": string, // markdown supported, must use in-text referencing like [Philosophy, 1], etc.
+              "summary": string, // markdown supported, must use in-text referencing like [Philosophy, 1], etc. CRITICAL: Include direct quotes from relevant secular philosophers with proper attribution. Format: "As [Philosopher Name] argued, '[quote]'". DO NOT include religious figures. Choose philosophers relevant to the query and integrate their perspectives with actual quotes.
               "sources": [{ "title": string, "url": string }] // array of sources for Philosophy, referenced in the summary by [Philosophy, n]
             }
           },
           "conclusions": [
             {
-              "label": string, // short label for the outcome, e.g. "Universal Compassion", "Conditional Liberation"
-              "summary": string // markdown summary of this logical conclusion, referencing the religious sections and logic, must use in-text referencing like [Judaism, 1], [Islam, 2], [Hinduism, 3], etc.
+              "label": string, // AI-determined topic or theme label that best captures this conclusion (e.g., "Universal Compassion", "Conditional Liberation", "Ethical Duty", "Personal Freedom")
+              "summary": string // markdown summary exploring this perspective using logical reasoning and cross-religious comparison, must use in-text referencing like [Judaism, 1], [Islam, 2], [Hinduism, 3], etc.
             }
-            // ...multiple possible conclusions
+            // ...AI should determine how many conclusions are needed based on the complexity and diversity of perspectives
           ]
         }
 
@@ -101,7 +108,7 @@ export async function POST(req: NextRequest) {
         - "featured_quote_source" must be an object with the title and url of the source for the featured quote, and should be displayed directly under the quote.
         - "status" can be a single word from the allowed values, or null if not applicable. If null, do not display a status badge. For questions where a status is not meaningful (e.g., "Who is God?"), you MUST set status to null. Note that different religions use different status terminology (e.g., "dharmic/adharmic" for Hinduism, "skillful/unskillful" for Buddhism).
         - "sources" must be an array of objects, each with a "title" and "url", referenced in the summary using [Religion, n], and must include all sources referenced in any summary or conclusion for that religion.
-        - "conclusions" MUST be an array of possible logical outcomes, each with a short label and a markdown summary. Each summary should synthesize and compare the religious perspectives using logical reasoning, and respect individual choice. If there are multiple plausible outcomes—especially due to value pluralism, conflicting traditions, or different ethical frameworks—include each as a separate object in the array. Do NOT collapse all reasoning into a single conclusion if multiple are logically valid.
+        - "conclusions" should be AI-determined thematic perspectives that synthesize the religious viewpoints. The AI should decide how many conclusions are needed (typically 1-4) based on the diversity of perspectives and complexity of the question. Each conclusion should represent a distinct logical framework or ethical approach, respecting value pluralism. DO NOT force multiple conclusions if the perspectives converge on a single answer.
 
     Remember: You serve logicians who want to follow world religions but struggle with inconsistencies. Help them navigate objective morality while respecting their desire for spiritual truth and ethical living.`;
 
@@ -136,15 +143,6 @@ Your response MUST be a single valid JSON object as described in the RESPONSE FO
 
     console.log("[API] /search Gemini response received, length:", result.text.length);
     console.log("[API] /search Gemini response preview:", result.text.substring(0, 200));
-
-    // Utility to clean Gemini's markdown fencing
-    function cleanGeminiJson(text: string): string {
-      // Remove triple backticks and optional "json" label
-      return text
-        .replace(/^```json\s*/i, "")
-        .replace(/```$/i, "")
-        .trim();
-    }
 
     // Try to parse the response as JSON, fallback to raw text if parsing fails
     let responseJson;

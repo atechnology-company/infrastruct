@@ -139,6 +139,8 @@ export function SearchingScreen({
     conclusions?: any[];
   } | null;
 }) {
+  console.log("[SearchingScreen] COMPONENT CALLED - prompt:", prompt, "results:", results);
+
   // queries: { judaism: { query, numResults }, ... }
   const abortControllerRef = useRef<AbortController | null>(null);
   const [isStopped, setIsStopped] = useState(false);
@@ -909,6 +911,7 @@ export function SearchingScreen({
 
 
   
+
   // --- MAIN RETURN BLOCK ---
   return (
     <motion.div
