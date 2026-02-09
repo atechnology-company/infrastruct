@@ -1,4 +1,4 @@
-# Infrastruct
+# Infrastruct (archived)
 is a logic-based belief-agnostic jurisprudence framework that interprets various divine sources through the lens of clear logical systems in order to create a coherent legal code.
 
 Infrastruct is
