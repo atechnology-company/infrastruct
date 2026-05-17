@@ -48,9 +48,9 @@ describe("inferModelTierFromSignals", () => {
 
 describe("getTransformersModelCandidates", () => {
   test("returns tier-appropriate model order", () => {
-    expect(getTransformersModelCandidates("low")[0]).toBe(TRANSFORMERS_MODELS.tiny);
-    expect(getTransformersModelCandidates("medium")[0]).toBe(TRANSFORMERS_MODELS.medium);
-    expect(getTransformersModelCandidates("high")[0]).toBe(TRANSFORMERS_MODELS.medium);
-    expect(getTransformersModelCandidates("high")[1]).toBe(TRANSFORMERS_MODELS.large);
+    expect(getTransformersModelCandidates("low")[0]).toBe(TRANSFORMERS_MODELS.gemmaSmall);
+    expect(getTransformersModelCandidates("medium")[0]).toBe(TRANSFORMERS_MODELS.gemmaSmall);
+    expect(getTransformersModelCandidates("high")[0]).toBe(TRANSFORMERS_MODELS.gemmaLarge);
+    expect(getTransformersModelCandidates("high")[1]).toBe(TRANSFORMERS_MODELS.gemmaSmall);
   });
 });

@@ -5,14 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { marked } from "marked";
 import { ChevronDown, ExternalLink, X } from "lucide-react";
 import { generateSearchQueries } from "@/lib/local-llm";
+import { searchWithSearx } from "@/lib/searx-client";
+import { isReligionKey, type ReligionKey } from "@/lib/religions";
 
 // --- CONFIGURATION ---
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
-const CSE_IDS = {
-  judaism: process.env.NEXT_PUBLIC_CSE_ID_JUDAISM || "",
-  christianity: process.env.NEXT_PUBLIC_CSE_ID_CHRISTIANITY || "",
-  islam: process.env.NEXT_PUBLIC_CSE_ID_ISLAM || "",
-};
 
 const RELIGIONS = [
   { key: "judaism", label: "JUDAISM" },
@@ -120,15 +116,13 @@ interface SourceResult {
 
 export function SearchingScreen({
   prompt,
-  apiKey = GOOGLE_API_KEY,
-  cseIds = CSE_IDS,
+  enabledReligions,
   onCompleteAction,
   onStop,
   results,
 }: {
   prompt: string;
-  apiKey?: string;
-  cseIds?: { judaism: string; christianity: string; islam: string };
+  enabledReligions: Record<ReligionKey, boolean>;
   onCompleteAction?: (results: SourceResult[]) => void;
   onStop?: () => void;
   results?: {
@@ -138,7 +132,9 @@ export function SearchingScreen({
     conclusions?: any[];
   } | null;
 }) {
-  console.log("[SearchingScreen] COMPONENT CALLED - prompt:", prompt, "results:", results);
+  const activeCategories = SEARCH_CATEGORIES.filter(
+    (c) => c.key === "philosophy" || enabledReligions[c.key as ReligionKey],
+  );
 
   // queries: { judaism: { query, numResults }, ... }
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -298,6 +294,13 @@ export function SearchingScreen({
       try {
         log("Generating queries locally for prompt:", prompt);
         const data = await generateSearchQueries(prompt);
+        if (data?.queries) {
+          for (const key of Object.keys(data.queries)) {
+            if (isReligionKey(key) && !enabledReligions[key]) {
+              data.queries[key].numResults = 0;
+            }
+          }
+        }
         log("Queries received:", data);
 
         // Validate queries format
@@ -348,7 +351,7 @@ export function SearchingScreen({
       // Do NOT setIsStopped(true) here; only abort the controller
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-  }, [prompt]);
+  }, [prompt, enabledReligions]);
 
   // Step 2: Fetch CSE results and scrape content (concurrent for all categories)
   useEffect(() => {
@@ -382,11 +385,10 @@ export function SearchingScreen({
       }, 5 * 60 * 1000); // 5 minutes
 
       try {
-        // Process categories in batches of 3 to avoid Perplexity rate limits
         const batchSize = 3;
-        for (let batchIdx = 0; batchIdx < SEARCH_CATEGORIES.length; batchIdx += batchSize) {
-          const batch = SEARCH_CATEGORIES.slice(batchIdx, batchIdx + batchSize);
-          log(`📦 Processing batch ${Math.floor(batchIdx / batchSize) + 1}/${Math.ceil(SEARCH_CATEGORIES.length / batchSize)}: ${batch.map(r => r.key).join(', ')}`);
+        for (let batchIdx = 0; batchIdx < activeCategories.length; batchIdx += batchSize) {
+          const batch = activeCategories.slice(batchIdx, batchIdx + batchSize);
+          log(`📦 Processing batch ${Math.floor(batchIdx / batchSize) + 1}/${Math.ceil(activeCategories.length / batchSize)}: ${batch.map(r => r.key).join(', ')}`);
 
           await Promise.all(
             batch.map(async (r, idx) => {
@@ -396,6 +398,10 @@ export function SearchingScreen({
                 return;
               }
               const { query, numResults } = queries[r.key];
+              if (numResults <= 0) {
+                setScrapingDone((prev) => ({ ...prev, [r.key]: true }));
+                return;
+              }
               setCurrentSiteIdx((prev) => ({ ...prev, [r.key]: 0 }));
               setCurrentSiteTitle((prev) => ({
                 ...prev,
@@ -403,113 +409,61 @@ export function SearchingScreen({
               }));
               log('fetchAndScrapeConcurrent: setCurrentSiteIdx/Title', r.key, queries[r.key]?.query);
 
-              // Try Perplexity first, fallback to Searx
-              let searchData: any = null;
-              let usedEngine = 'none';
+              let searchData: { results: any[]; usedEngine: string } | null = null;
+              let usedEngine = "searx";
 
-              // Step 1: Try Perplexity API
               try {
-                log('fetchAndScrapeConcurrent: trying Perplexity for', r.key);
-                setCurrentEngine((prev) => ({ ...prev, [r.key]: 'perplexity' }));
-                setCurrentSiteTitle((prev) => ({ ...prev, [r.key]: 'Searching with Perplexity...' }));
+                log("fetchAndScrapeConcurrent: Searx search for", r.key);
+                setCurrentEngine((prev) => ({ ...prev, [r.key]: "searx" }));
+                setCurrentSiteTitle((prev) => ({
+                  ...prev,
+                  [r.key]: "Searching with Searx...",
+                }));
 
-                const perplexityRes = await fetch('/api/perplexity-search', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query, religion: r.key, numResults }),
-                  signal: abortControllerRef.current?.signal,
+                const searxData = await searchWithSearx(query, r.key, numResults, {
+                  onMirror: (mirror) => {
+                    setCurrentSiteTitle((prev) => ({
+                      ...prev,
+                      [r.key]: `Searching: ${mirror}`,
+                    }));
+                    setCurrentEngine((prev) => ({ ...prev, [r.key]: mirror }));
+                  },
                 });
 
-                if (perplexityRes.ok) {
-                  const data = await perplexityRes.json();
-                  if (data.results && Array.isArray(data.results) && data.results.length > 0) {
-                    searchData = data;
-                    usedEngine = 'perplexity';
-                    log('fetchAndScrapeConcurrent: Perplexity succeeded for', r.key, data);
-                    setCurrentSiteTitle((prev) => ({ ...prev, [r.key]: `Found ${data.results.length} sources via Perplexity` }));
-                  } else {
-                    log('fetchAndScrapeConcurrent: Perplexity returned no results for', r.key);
-                  }
-                } else {
-                  log('fetchAndScrapeConcurrent: Perplexity API failed for', r.key, perplexityRes.status);
-                }
+                searchData = searxData;
+                usedEngine = searxData.usedEngine;
+                setCurrentSiteTitle((prev) => ({
+                  ...prev,
+                  [r.key]: searxData.usedMirrors.length
+                    ? `Results from: ${searxData.usedMirrors.join(", ")}`
+                    : `Found ${searxData.results.length} sources via Searx`,
+                }));
               } catch (err) {
-                log('fetchAndScrapeConcurrent: Perplexity error for', r.key, err);
+                log("fetchAndScrapeConcurrent: Searx error for", r.key, err);
               }
 
-              // Step 2: Fallback to Searx if Perplexity failed or returned no results
-              if (!searchData || !searchData.results || searchData.results.length === 0) {
-                log('fetchAndScrapeConcurrent: Falling back to Searx for', r.key);
-                setCurrentEngine((prev) => ({ ...prev, [r.key]: 'searx' }));
-                // --- SSE: Progressive Searx mirror updates ---
-                let sseDone = false;
-                let sseError: string | null = null;
-                let sseResults: { results: any[]; usedEngine: string; usedMirrors?: string[] } | null = null;
-                let sseMirrors: string[] = [];
-                await new Promise<void>((resolve) => {
-                  const sseUrl = `/api/scrape-content?mode=search&query=${encodeURIComponent(query)}&religion=${encodeURIComponent(r.key)}&numResults=${encodeURIComponent(String(numResults))}`;
-                  const es = new window.EventSource(sseUrl);
-                  es.addEventListener('mirror', (e: MessageEvent) => {
-                    try {
-                      const data: { mirror: string; url: string } = JSON.parse(e.data);
-                      setCurrentSiteTitle((prev) => ({ ...prev, [r.key]: `Searching: ${data.mirror}` }));
-                      setCurrentEngine((prev) => ({ ...prev, [r.key]: data.mirror }));
-                      sseMirrors.push(data.mirror);
-                    } catch { }
-                  });
-                  es.addEventListener('results', (e: MessageEvent) => {
-                    try {
-                      const data = JSON.parse(e.data) as { results: any[]; usedEngine: string; usedMirrors?: string[] };
-                      sseResults = data;
-                      if (data.usedMirrors) sseMirrors = data.usedMirrors;
-                      sseDone = true;
-                      es.close();
-                      resolve();
-                    } catch { }
-                  });
-                  es.addEventListener('error', (e: MessageEvent) => {
-                    try {
-                      sseError = e.data as string;
-                      sseDone = true;
-                      es.close();
-                      resolve();
-                    } catch { }
-                  });
-                });
-                if (
-                  sseError ||
-                  !sseResults ||
-                  !Array.isArray((sseResults as { results: any[] }).results) ||
-                  (sseResults as { results: any[] }).results.length === 0
-                ) {
-                  setSources((prev) => ({
-                    ...prev,
-                    [r.key]: [
-                      {
-                        religion: r.label,
-                        title: "No results found (Perplexity and Searx failed)",
-                        link: "",
-                        color: COLORS[r.key as keyof typeof COLORS],
-                        loading: false,
-                        query,
-                        filled: true,
-                        snippet: "Both Perplexity and Searx failed. Try again later.",
-                        engine: 'none',
-                      },
-                    ],
-                  }));
-                  setErrorState((prev) => ({ ...prev, [r.key]: true }));
-                  setAllFailed((prev) => ({ ...prev, [r.key]: true }));
-                  setCurrentEngine((prev) => ({ ...prev, [r.key]: 'none' }));
-                  // mark this category as done even if failed
-                  setScrapingDone((prev) => ({ ...prev, [r.key]: true }));
-                  return;
-                }
-                // Show final mirror used
-                setCurrentSiteTitle((prev) => ({ ...prev, [r.key]: `Results from: ${sseMirrors.join(', ')}` }));
-                setCurrentEngine((prev) => ({ ...prev, [r.key]: sseMirrors.length > 0 ? sseMirrors[sseMirrors.length - 1] : 'searx' }));
-                searchData = sseResults;
-                usedEngine = searchData.usedEngine || "searx";
+              if (!searchData?.results?.length) {
+                setSources((prev) => ({
+                  ...prev,
+                  [r.key]: [
+                    {
+                      religion: r.label,
+                      title: "No results found (Searx failed)",
+                      link: "",
+                      color: COLORS[r.key as keyof typeof COLORS],
+                      loading: false,
+                      query,
+                      filled: true,
+                      snippet: "Searx search failed. Try again later.",
+                      engine: "none",
+                    },
+                  ],
+                }));
+                setErrorState((prev) => ({ ...prev, [r.key]: true }));
+                setAllFailed((prev) => ({ ...prev, [r.key]: true }));
+                setCurrentEngine((prev) => ({ ...prev, [r.key]: "none" }));
+                setScrapingDone((prev) => ({ ...prev, [r.key]: true }));
+                return;
               }
 
               // For each result, scrape content and animate title
@@ -762,7 +716,7 @@ export function SearchingScreen({
       // Do NOT setIsStopped(true) here; only abort the controller
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-  }, [queries, apiKey, cseIds, isStopped]);
+  }, [queries, enabledReligions, isStopped, activeCategories]);
   // Stop button handler
   const handleStop = () => {
     setIsStopped(true);

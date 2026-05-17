@@ -24,7 +24,7 @@ export function ModelLoadingBar({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.25 }}
-          className="absolute left-0 right-0 top-full mt-3"
+          className="w-full"
         >
           <div className="flex items-center justify-between gap-3 text-xs text-gray-500 mb-1.5">
             <span className="truncate">

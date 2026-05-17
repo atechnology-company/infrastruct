@@ -300,36 +300,28 @@ export async function GET(req: NextRequest) {
 
   try {
     let res;
-    if (process.env.UNSAFE_FETCH === '1') {
-      const https = await import('https');
-      const agent = new https.Agent({ rejectUnauthorized: false });
-      const fetchUnsafe = (await import('node-fetch')).default;
-      res = await fetchUnsafe(url, {
-        headers: {
-          // Pretend to be a browser
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Referer": url,
-          "Connection": "keep-alive",
-          "Cache-Control": "no-cache",
-        },
-        // Some sites block bots, so follow redirects
+    const fetchHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml,application/xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: url,
+      Connection: "keep-alive",
+      "Cache-Control": "no-cache",
+    };
+
+    if (process.env.UNSAFE_FETCH === "1") {
+      const { Agent } = await import("undici");
+      const dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+      res = await fetch(url, {
+        headers: fetchHeaders,
         redirect: "follow",
-        agent,
+        // @ts-expect-error undici dispatcher is supported by Node fetch
+        dispatcher,
       });
     } else {
       res = await fetch(url, {
-        headers: {
-          // Pretend to be a browser
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Referer": url,
-          "Connection": "keep-alive",
-          "Cache-Control": "no-cache",
-        },
-        // Some sites block bots, so follow redirects
+        headers: fetchHeaders,
         redirect: "follow",
       });
     }

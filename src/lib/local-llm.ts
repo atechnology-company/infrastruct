@@ -11,6 +11,7 @@ import {
   describeModelTier,
   getDeviceCapabilitySnapshot,
   getTransformersModelCandidates,
+  isGemma4Model,
   type ModelTier,
 } from "@/lib/device-capabilities";
 
@@ -80,6 +81,7 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
   });
 
   const warmup = await LanguageModel.create({
+    outputLanguage: "en",
     monitor(m) {
       m.addEventListener("downloadprogress", (e: Event) => {
         const loaded = (e as ProgressEvent).loaded ?? 0;
@@ -91,15 +93,16 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
         });
       });
     },
-  });
+  } as LanguageModelCreateOptions);
   warmup.destroy?.();
 
   return {
     backend: "prompt-api",
     async generate(system: string, user: string) {
       const runSession = await LanguageModel.create({
+        outputLanguage: "en",
         initialPrompts: [{ role: "system", content: system }],
-      });
+      } as LanguageModelCreateOptions);
       try {
         const result = await runSession.prompt(user);
         return typeof result === "string" ? result : String(result);
@@ -110,14 +113,49 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
   };
 }
 
-async function loadTransformersGenerator(
+type TransformersProgress = {
+  status?: string;
+  progress?: number;
+  file?: string;
+};
+
+function transformersProgressCallback(onProgress?: ProgressCallback) {
+  return (data: TransformersProgress) => {
+    const pct =
+      data.status === "progress" || data.status === "progress_total"
+        ? data.progress
+        : undefined;
+    if (pct != null) {
+      onProgress?.({
+        status: "loading",
+        progress: Math.min(95, Math.round(pct)),
+        message: data.file ? `Downloading ${data.file.split("/").pop()}` : "Downloading model...",
+        backend: "transformers",
+      });
+    } else if (data.status === "done") {
+      onProgress?.({
+        status: "loading",
+        progress: 98,
+        message: "Initializing model...",
+        backend: "transformers",
+      });
+    }
+  };
+}
+
+async function configureTransformersEnv() {
+  const { env } = await import("@huggingface/transformers");
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+  return typeof navigator !== "undefined" && "gpu" in navigator ? "webgpu" : "wasm";
+}
+
+async function loadPhi4Generator(
   modelId: string,
   onProgress?: ProgressCallback,
 ): Promise<TextGenerator> {
-  const { pipeline, env } = await import("@huggingface/transformers");
-
-  env.allowLocalModels = false;
-  env.useBrowserCache = true;
+  const { pipeline } = await import("@huggingface/transformers");
+  const device = await configureTransformersEnv();
 
   onProgress?.({
     status: "loading",
@@ -126,39 +164,67 @@ async function loadTransformersGenerator(
     backend: "transformers",
   });
 
-  const device =
-    typeof navigator !== "undefined" && "gpu" in navigator ? "webgpu" : "wasm";
-
   const generator = await pipeline("text-generation", modelId, {
     dtype: device === "webgpu" ? "q4f16" : "q4",
     device,
-    progress_callback: (data: {
-      status?: string;
-      progress?: number;
-      file?: string;
-      loaded?: number;
-      total?: number;
-    }) => {
-      if (data.status === "progress" && data.progress != null) {
-        onProgress?.({
-          status: "loading",
-          progress: Math.min(95, Math.round(data.progress)),
-          message: data.file ? `Downloading ${data.file.split("/").pop()}` : "Downloading Qwen3.5-3B...",
-          backend: "transformers",
-        });
-      } else if (data.status === "done") {
-        onProgress?.({
-          status: "loading",
-          progress: 98,
-          message: "Initializing model...",
-          backend: "transformers",
-        });
-      }
-    },
+    progress_callback: transformersProgressCallback(onProgress),
   });
 
   return generator as unknown as TextGenerator;
 }
+
+async function loadGemma4Generator(
+  modelId: string,
+  onProgress?: ProgressCallback,
+): Promise<(system: string, user: string) => Promise<string>> {
+  const { AutoProcessor, Gemma4ForConditionalGeneration } = await import(
+    "@huggingface/transformers"
+  );
+  const device = await configureTransformersEnv();
+  const progress_callback = transformersProgressCallback(onProgress);
+
+  onProgress?.({
+    status: "loading",
+    progress: 5,
+    message: `Loading ${modelId}...`,
+    backend: "transformers",
+  });
+
+  const processor = await AutoProcessor.from_pretrained(modelId, { progress_callback });
+  const model = await Gemma4ForConditionalGeneration.from_pretrained(modelId, {
+    dtype: device === "webgpu" ? "q4f16" : "q4",
+    device,
+    progress_callback,
+  });
+
+  return async (system: string, user: string) => {
+    const messages = [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ];
+    const prompt = processor.apply_chat_template(messages, {
+      add_generation_prompt: true,
+    } as Parameters<typeof processor.apply_chat_template>[1]);
+    const inputs = await processor(prompt, undefined, undefined, {
+      add_special_tokens: false,
+    });
+    const outputs = await model.generate({
+      ...inputs,
+      max_new_tokens: 4096,
+      do_sample: false,
+    });
+    const sequences =
+      outputs && typeof outputs === "object" && "sequences" in outputs
+        ? (outputs as { sequences: import("@huggingface/transformers").Tensor }).sequences
+        : (outputs as import("@huggingface/transformers").Tensor);
+    const promptLen = inputs.input_ids.dims.at(-1) ?? 0;
+    const decoded = processor.batch_decode(sequences.slice(null, [promptLen, null]), {
+      skip_special_tokens: true,
+    });
+    return decoded[0] ?? "";
+  };
+}
+
 
 async function tryTransformers(onProgress?: ProgressCallback): Promise<LocalLlmInstance> {
   let lastError: unknown;
@@ -185,24 +251,29 @@ async function tryTransformers(onProgress?: ProgressCallback): Promise<LocalLlmI
         deviceMemoryGb: caps.deviceMemoryGb,
       });
 
-      const generator = await loadTransformersGenerator(modelId, onProgress);
+      const generate = isGemma4Model(modelId)
+        ? await loadGemma4Generator(modelId, onProgress)
+        : await (async () => {
+            const generator = await loadPhi4Generator(modelId, onProgress);
+            return async (system: string, user: string) => {
+              const messages = [
+                { role: "system", content: system },
+                { role: "user", content: user },
+              ];
+              const output = await generator(messages, {
+                max_new_tokens: 4096,
+                temperature: 0.2,
+              });
+              return extractTransformersText(output);
+            };
+          })();
 
       return {
         backend: "transformers",
         modelId,
         tier: caps.tier,
         deviceMemoryGb: caps.deviceMemoryGb,
-        async generate(system: string, user: string) {
-          const messages = [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ];
-          const output = await generator(messages, {
-            max_new_tokens: 4096,
-            temperature: 0.2,
-          });
-          return extractTransformersText(output);
-        },
+        generate,
       };
     } catch (err) {
       lastError = err;
@@ -210,7 +281,7 @@ async function tryTransformers(onProgress?: ProgressCallback): Promise<LocalLlmI
     }
   }
 
-  throw lastError ?? new Error("Could not load any Qwen3.5 model in the browser");
+  throw lastError ?? new Error("Could not load any browser AI model");
 }
 
 export async function initializeLocalLlm(

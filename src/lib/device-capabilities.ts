@@ -1,21 +1,26 @@
 export type ModelTier = "low" | "medium" | "high";
 
 export const TRANSFORMERS_MODELS = {
-  tiny: "onnx-community/Qwen3.5-0.8B-ONNX",
-  small: "onnx-community/Qwen3.5-2B-ONNX",
-  medium: "OramaSearch/Qwen-3.5-3B-Instruct-ONNX",
-  large: "onnx-community/Qwen3.5-4B-ONNX",
+  gemmaSmall: "onnx-community/gemma-4-E2B-it-ONNX",
+  gemmaLarge: "onnx-community/gemma-4-E4B-it-ONNX",
+  phi4: "onnx-community/Phi-4-mini-instruct-ONNX-GQA",
+  phi4Alt: "onnx-community/Phi-4-mini-instruct-ONNX-MHA",
 } as const;
 
 const TIER_MODEL_ORDER: Record<ModelTier, readonly string[]> = {
-  low: [TRANSFORMERS_MODELS.tiny, TRANSFORMERS_MODELS.small],
-  medium: [TRANSFORMERS_MODELS.medium, TRANSFORMERS_MODELS.small],
+  low: [TRANSFORMERS_MODELS.gemmaSmall, TRANSFORMERS_MODELS.phi4],
+  medium: [TRANSFORMERS_MODELS.gemmaSmall, TRANSFORMERS_MODELS.phi4, TRANSFORMERS_MODELS.phi4Alt],
   high: [
-    TRANSFORMERS_MODELS.medium,
-    TRANSFORMERS_MODELS.large,
-    TRANSFORMERS_MODELS.small,
+    TRANSFORMERS_MODELS.gemmaLarge,
+    TRANSFORMERS_MODELS.gemmaSmall,
+    TRANSFORMERS_MODELS.phi4,
+    TRANSFORMERS_MODELS.phi4Alt,
   ],
 };
+
+export function isGemma4Model(modelId: string): boolean {
+  return modelId.includes("gemma-4");
+}
 
 export function readDeviceMemoryGb(): number | null {
   if (typeof navigator === "undefined") return null;
@@ -71,8 +76,7 @@ export function getDeviceCapabilitySnapshot(): {
 }
 
 export function getTransformersModelCandidates(tier?: ModelTier): string[] {
-  const resolved =
-    tier ?? getDeviceCapabilitySnapshot().tier;
+  const resolved = tier ?? getDeviceCapabilitySnapshot().tier;
   return [...TIER_MODEL_ORDER[resolved]];
 }
 
@@ -87,10 +91,10 @@ export function describeModelTier(
 
   const model =
     tier === "low"
-      ? "Qwen3.5-0.8B"
+      ? "Gemma 4 E2B"
       : tier === "medium"
-        ? "Qwen3.5-3B"
-        : "Qwen3.5-3B/4B";
+        ? "Gemma 4 E2B"
+        : "Gemma 4 E4B";
 
   return `${ram} — loading ${model}`;
 }
