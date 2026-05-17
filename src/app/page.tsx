@@ -7,6 +7,9 @@ import { RainbowText } from "@/components/rainbow-text";
 
 import { SearchingScreen } from "@/components/searching-screen";
 import { SettingsPage } from "@/components/settings-page";
+import { ModelLoadingBar } from "@/components/model-loading-bar";
+import { useLocalLlm } from "@/hooks/use-local-llm";
+import { synthesizeSearchResults } from "@/lib/local-llm";
 
 type AppState = "home" | "thinking" | "searching" | "results" | "settings";
 
@@ -38,6 +41,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 }
 
 export default function Home() {
+  const { loadState, isReady, isLoading } = useLocalLlm();
   const [appState, setAppState] = useState<AppState>("home");
   // Debug appState transitions
   React.useEffect(() => {
@@ -100,6 +104,7 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+    if (!isReady) return;
 
     // Check cache
     const cached = history.find((h) => h.query.toLowerCase() === query.trim().toLowerCase());
@@ -119,26 +124,12 @@ export default function Home() {
     console.log("[App] handleSearchComplete called with sources:", sources?.length, "items");
 
     try {
-      console.log("[App] Fetching /api/search...");
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, sources }),
-      });
-      console.log("[App] /api/search fetch completed, status:", res.status);
-
-      if (!res.ok) {
-        throw new Error(`API returned ${res.status}`);
-      }
-
-      const data = await res.json();
-      console.log("[App] /api/search response received");
-      console.log("[App] /api/search response keys:", Object.keys(data));
-
-      const resp = data?.response || {};
+      console.log("[App] Synthesizing results with local LLM...");
+      const resp = await synthesizeSearchResults(query, sources);
+      console.log("[App] Local LLM synthesis complete");
       console.log("[App] response object keys:", Object.keys(resp));
 
-      const title = resp.title || "Results";
+      const title = typeof resp.title === "string" ? resp.title : "Results";
       const rawSections = resp.sections || {};
       console.log("[App] rawSections keys:", Object.keys(rawSections));
       // Normalize sections to required shape and keys
@@ -223,9 +214,9 @@ export default function Home() {
       const norm = {
         title,
         sections,
-        conclusion,
+        conclusion: conclusion ?? "",
         conclusions,
-        sources: resp.sources,
+        sources: Array.isArray(resp.sources) ? resp.sources : undefined,
       };
       console.log("[App] normalized resultsData:", norm);
       console.log("[App] resultsData sections:", Object.keys(norm.sections));
@@ -311,10 +302,12 @@ export default function Home() {
                       setQuery(e.target.value);
                       setIsTyping(e.target.value.length > 0);
                     }}
-                    className="w-full bg-transparent text-2xl md:text-4xl text-white border-none outline-none transition-transform duration-300 ease-out"
+                    disabled={isLoading && !isReady}
+                    className="w-full bg-transparent text-2xl md:text-4xl text-white border-none outline-none transition-transform duration-300 ease-out disabled:opacity-60"
                     placeholder=""
                     autoFocus
                   />
+                  <ModelLoadingBar loadState={loadState} visible={isLoading || loadState.status === "error"} />
                   <RainbowText
                     text="What is it that you need to know?"
                     isVisible={!isTyping && !query}
@@ -333,7 +326,7 @@ export default function Home() {
                         just start typing
                       </motion.div>
                     )}
-                    {query && (
+                    {query && isReady && (
                       <motion.div
                         key="press-enter"
                         initial={{ opacity: 0, y: 10 }}
@@ -343,6 +336,16 @@ export default function Home() {
                         className="absolute bottom-[-60px] left-0 text-gray-600 text-lg"
                       >
                         just press enter
+                      </motion.div>
+                    )}
+                    {query && isLoading && (
+                      <motion.div
+                        key="model-loading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="absolute bottom-[-60px] left-0 text-gray-600 text-lg"
+                      >
+                        waiting for AI model...
                       </motion.div>
                     )}
                   </AnimatePresence>

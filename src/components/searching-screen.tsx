@@ -4,10 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { marked } from "marked";
 import { ChevronDown, ExternalLink, X } from "lucide-react";
+import { generateSearchQueries } from "@/lib/local-llm";
 
 // --- CONFIGURATION ---
-
-const GEMINI_API_URL = "/api/generate-queries";
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
 const CSE_IDS = {
   judaism: process.env.NEXT_PUBLIC_CSE_ID_JUDAISM || "",
@@ -296,38 +295,9 @@ export function SearchingScreen({
           {} as Record<string, SourceResult[]>,
         ),
       );
-      // Utility to clean Gemini's markdown fencing
-      function cleanGeminiJson(text: string): string {
-        log('cleanGeminiJson: called');
-        // Remove triple backticks and optional "json" label, robustly
-        let cleaned = text.trim();
-        // Remove all leading/trailing backtick blocks
-        cleaned = cleaned.replace(/^```+(json)?\s*/i, "");
-        cleaned = cleaned.replace(/```+\s*$/i, "");
-        // Remove any stray backticks at start/end
-        cleaned = cleaned.replace(/^`+|`+$/g, "");
-        // Remove any leading/trailing whitespace again
-        return cleaned.trim();
-      }
-
       try {
-        log("Fetching queries for prompt:", prompt);
-        const res = await fetch(GEMINI_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt }),
-          ...(abortControllerRef.current ? { signal: abortControllerRef.current.signal } : {}),
-        });
-        let rawText = await res.text();
-        log('fetchQueries: rawText', rawText);
-        let data;
-        try {
-          data = JSON.parse(cleanGeminiJson(rawText));
-        } catch (e) {
-          log("Error parsing Gemini response:", rawText);
-          setStatusText("error");
-          return;
-        }
+        log("Generating queries locally for prompt:", prompt);
+        const data = await generateSearchQueries(prompt);
         log("Queries received:", data);
 
         // Validate queries format
@@ -348,7 +318,7 @@ export function SearchingScreen({
         if (valid) {
           SEARCH_CATEGORIES.forEach((r) => {
             if (typeof data.queries[r.key].numResults === "string") {
-              const n = parseInt(data.queries[r.key].numResults, 10);
+              const n = parseInt(String(data.queries[r.key].numResults), 10);
               if (!isNaN(n)) data.queries[r.key].numResults = n;
             }
           });

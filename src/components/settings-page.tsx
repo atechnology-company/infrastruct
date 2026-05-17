@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
+import { getDeviceCapabilitySnapshot, getLocalLlm } from "@/lib/local-llm";
 
-type Backend = "nextjs" | "vlang";
 type ReligionKey = "judaism" | "christianity" | "islam" | "hinduism" | "sikhism" | "buddhism";
 
 interface SettingsPageProps {
@@ -21,8 +21,6 @@ const RELIGIONS: { key: ReligionKey; label: string }[] = [
 ];
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
-    const [backend, setBackend] = useState<Backend>("nextjs");
-    const [vServerStatus, setVServerStatus] = useState<"checking" | "online" | "offline">("checking");
     const [enabledReligions, setEnabledReligions] = useState<Record<ReligionKey, boolean>>({
         judaism: true,
         christianity: true,
@@ -31,12 +29,19 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         sikhism: true,
         buddhism: true,
     });
+    const [aiBackend, setAiBackend] = useState<string>("checking...");
+    const [deviceInfo, setDeviceInfo] = useState<string>("");
 
-    // Load saved preferences
     useEffect(() => {
-        const savedBackend = localStorage.getItem("infrastruct-backend") as Backend;
-        if (savedBackend) setBackend(savedBackend);
+        const caps = getDeviceCapabilitySnapshot();
+        setDeviceInfo(
+            caps.deviceMemoryGb != null
+                ? `Device RAM (reported): ~${caps.deviceMemoryGb} GB · tier: ${caps.tier}`
+                : `Device RAM not reported · tier: ${caps.tier} (from CPU/GPU hints)`,
+        );
+    }, []);
 
+    useEffect(() => {
         const savedReligions = localStorage.getItem("infrastruct-religions");
         if (savedReligions) {
             try {
@@ -45,51 +50,29 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         }
     }, []);
 
-    // Check V server status
     useEffect(() => {
-        const checkVServer = async () => {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-                const res = await fetch("http://localhost:3001/health", {
-                    method: "GET",
-                    signal: controller.signal,
-                    mode: 'cors',
-                });
-
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.status === "ok") {
-                        setVServerStatus("online");
-                    } else {
-                        setVServerStatus("offline");
-                    }
-                } else {
-                    setVServerStatus("offline");
+        const llm = getLocalLlm();
+        if (!llm) {
+            setAiBackend("loading...");
+            const id = setInterval(() => {
+                const ready = getLocalLlm();
+                if (ready) {
+                    setAiBackend(
+                        ready.backend === "prompt-api"
+                            ? "Chrome / Edge built-in AI"
+                            : "Qwen3.5-3B (browser)",
+                    );
+                    clearInterval(id);
                 }
-            } catch (err) {
-                console.log("V server check failed:", err);
-                setVServerStatus("offline");
-            }
-        };
-
-        checkVServer();
-        const interval = setInterval(checkVServer, 10000);
-        return () => clearInterval(interval);
-    }, []);
-
-    const handleBackendChange = (newBackend: Backend) => {
-        setBackend(newBackend);
-        localStorage.setItem("infrastruct-backend", newBackend);
-
-        if (typeof window !== "undefined") {
-            (window as any).__INFRASTRUCT_API_BASE__ =
-                newBackend === "vlang" ? "http://localhost:3001" : "";
+            }, 500);
+            return () => clearInterval(id);
         }
-    };
+        setAiBackend(
+            llm.backend === "prompt-api"
+                ? "Chrome / Edge built-in AI"
+                : "Qwen3.5-3B (browser)",
+        );
+    }, []);
 
     const handleReligionToggle = (religion: ReligionKey) => {
         const newEnabled = { ...enabledReligions, [religion]: !enabledReligions[religion] };
@@ -98,10 +81,17 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white">
-            {/* Header */}
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="min-h-screen bg-black text-white"
+        >
             <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-sm border-b border-gray-800">
-                <div className="max-w-4xl mx-auto px-6 py-4">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="max-w-4xl mx-auto px-6 py-4"
+                >
                     <div className="flex items-center justify-between">
                         <button
                             onClick={onBack}
@@ -113,61 +103,27 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                         <h1 className="text-xl font-semibold">Settings</h1>
                         <div className="w-20" />
                     </div>
-                </div>
+                </motion.div>
             </div>
 
-            {/* Content */}
-            <div className="max-w-4xl mx-auto px-6 py-12">
+            <motion.div className="max-w-4xl mx-auto px-6 py-12">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-8"
                 >
-                    {/* Backend Selection */}
                     <div className="bg-gray-900/50 rounded-lg border border-gray-800 p-6">
-                        <h2 className="text-xl font-bold mb-4">Backend Server</h2>
-
-                        <div className="space-y-3">
-                            <label className="flex items-center justify-between p-4 rounded-lg border border-gray-700 hover:border-gray-600 cursor-pointer">
-                                <div>
-                                    <div className="font-semibold">Next.js</div>
-                                    <div className="text-sm text-gray-400">Production backend (recommended)</div>
-                                </div>
-                                <input
-                                    type="radio"
-                                    name="backend"
-                                    checked={backend === "nextjs"}
-                                    onChange={() => handleBackendChange("nextjs")}
-                                    className="w-4 h-4"
-                                />
-                            </label>
-
-                            <label className={`flex items-center justify-between p-4 rounded-lg border border-gray-700 hover:border-gray-600 ${vServerStatus === "offline" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-                                <div>
-                                    <div className="font-semibold flex items-center gap-2">
-                                        V
-                                        <span className="text-xs bg-yellow-900/50 text-yellow-400 px-2 py-0.5 rounded">
-                                            EXPERIMENTAL
-                                        </span>
-                                    </div>
-                                    <div className="text-sm text-gray-400 flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${vServerStatus === "online" ? "bg-green-500" : vServerStatus === "checking" ? "bg-yellow-500 animate-pulse" : "bg-red-500"}`}></div>
-                                        {vServerStatus === "online" ? "Server Online (port 3001)" : vServerStatus === "checking" ? "Checking..." : "Server Offline"}
-                                    </div>
-                                </div>
-                                <input
-                                    type="radio"
-                                    name="backend"
-                                    checked={backend === "vlang"}
-                                    onChange={() => handleBackendChange("vlang")}
-                                    disabled={vServerStatus === "offline"}
-                                    className="w-4 h-4"
-                                />
-                            </label>
-                        </div>
+                        <h2 className="text-xl font-bold mb-2">AI Model</h2>
+                        <p className="text-sm text-gray-400">
+                            Uses the browser Prompt API in Chrome or Edge when available, otherwise
+                            downloads Qwen3.5-3B via transformers.js.
+                        </p>
+                        <p className="mt-3 text-sm text-gray-300">{aiBackend}</p>
+                        {deviceInfo && (
+                            <p className="mt-1 text-xs text-gray-500">{deviceInfo}</p>
+                        )}
                     </div>
 
-                    {/* Religion Toggles */}
                     <div className="bg-gray-900/50 rounded-lg border border-gray-800 p-6">
                         <h2 className="text-xl font-bold mb-4">Enabled Religions</h2>
                         <p className="text-sm text-gray-400 mb-4">Select which religions to include in search results</p>
@@ -190,7 +146,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                         </div>
                     </div>
                 </motion.div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 }
