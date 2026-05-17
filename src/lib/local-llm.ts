@@ -8,6 +8,23 @@ import {
 } from "@/lib/prompts";
 import { parseModelJson } from "@/lib/json-utils";
 import {
+  createDownloadProgressTracker,
+  createPromptApiProgressTracker,
+  type ModelFileProgress,
+} from "@/lib/download-progress";
+import {
+  detectRefusalInParsed,
+  detectRefusalInText,
+  QueryGenerationError,
+} from "@/lib/llm-errors";
+import {
+  normalizeSearchQueries,
+  validateSearchQueries,
+} from "@/lib/validate-queries";
+
+export { QueryGenerationError } from "@/lib/llm-errors";
+export { userMessageForQueryError } from "@/lib/llm-errors";
+import {
   describeModelTier,
   getDeviceCapabilitySnapshot,
   getTransformersModelCandidates,
@@ -17,6 +34,8 @@ import {
 
 export type LlmBackend = "prompt-api" | "transformers";
 
+export type { ModelFileProgress };
+
 export type ModelLoadState = {
   status: "idle" | "checking" | "loading" | "ready" | "error";
   progress: number;
@@ -25,6 +44,7 @@ export type ModelLoadState = {
   modelId?: string;
   tier?: ModelTier;
   deviceMemoryGb?: number | null;
+  files?: ModelFileProgress[];
 };
 
 export { getDeviceCapabilitySnapshot, getTransformersModelCandidates };
@@ -36,12 +56,16 @@ type TextGenerator = (
   options?: { max_new_tokens?: number; temperature?: number },
 ) => Promise<{ generated_text?: { role: string; content: string }[] }>;
 
+export type LlmGenerateOptions = {
+  max_new_tokens?: number;
+};
+
 type LocalLlmInstance = {
   backend: LlmBackend;
   modelId?: string;
   tier?: ModelTier;
   deviceMemoryGb?: number | null;
-  generate: (system: string, user: string) => Promise<string>;
+  generate: (system: string, user: string, options?: LlmGenerateOptions) => Promise<string>;
 };
 
 let cachedLlm: LocalLlmInstance | null = null;
@@ -66,7 +90,7 @@ function extractTransformersText(output: unknown): string {
 
 async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
   backend: LlmBackend;
-  generate: (system: string, user: string) => Promise<string>;
+  generate: (system: string, user: string, options?: LlmGenerateOptions) => Promise<string>;
 } | null> {
   if (!hasLanguageModel()) return null;
 
@@ -80,17 +104,21 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
     backend: "prompt-api",
   });
 
+  const trackPrompt = createPromptApiProgressTracker(({ progress, message, files }) => {
+    onProgress?.({
+      status: "loading",
+      progress,
+      message,
+      files,
+      backend: "prompt-api",
+    });
+  });
+
   const warmup = await LanguageModel.create({
     outputLanguage: "en",
     monitor(m) {
       m.addEventListener("downloadprogress", (e: Event) => {
-        const loaded = (e as ProgressEvent).loaded ?? 0;
-        onProgress?.({
-          status: "loading",
-          progress: Math.min(95, Math.round(loaded * 100)),
-          message: "Downloading on-device model...",
-          backend: "prompt-api",
-        });
+        trackPrompt((e as ProgressEvent).loaded ?? 0);
       });
     },
   } as LanguageModelCreateOptions);
@@ -113,34 +141,17 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
   };
 }
 
-type TransformersProgress = {
-  status?: string;
-  progress?: number;
-  file?: string;
-};
-
 function transformersProgressCallback(onProgress?: ProgressCallback) {
-  return (data: TransformersProgress) => {
-    const pct =
-      data.status === "progress" || data.status === "progress_total"
-        ? data.progress
-        : undefined;
-    if (pct != null) {
-      onProgress?.({
-        status: "loading",
-        progress: Math.min(95, Math.round(pct)),
-        message: data.file ? `Downloading ${data.file.split("/").pop()}` : "Downloading model...",
-        backend: "transformers",
-      });
-    } else if (data.status === "done") {
-      onProgress?.({
-        status: "loading",
-        progress: 98,
-        message: "Initializing model...",
-        backend: "transformers",
-      });
-    }
-  };
+  const track = createDownloadProgressTracker(({ progress, message, files }) => {
+    onProgress?.({
+      status: "loading",
+      progress,
+      message,
+      files,
+      backend: "transformers",
+    });
+  });
+  return track;
 }
 
 async function configureTransformersEnv() {
@@ -176,7 +187,7 @@ async function loadPhi4Generator(
 async function loadGemma4Generator(
   modelId: string,
   onProgress?: ProgressCallback,
-): Promise<(system: string, user: string) => Promise<string>> {
+): Promise<(system: string, user: string, options?: LlmGenerateOptions) => Promise<string>> {
   const { AutoProcessor, Gemma4ForConditionalGeneration } = await import(
     "@huggingface/transformers"
   );
@@ -197,7 +208,7 @@ async function loadGemma4Generator(
     progress_callback,
   });
 
-  return async (system: string, user: string) => {
+  return async (system: string, user: string, options?: LlmGenerateOptions) => {
     const messages = [
       { role: "system", content: system },
       { role: "user", content: user },
@@ -210,9 +221,9 @@ async function loadGemma4Generator(
     });
     const outputs = await model.generate({
       ...inputs,
-      max_new_tokens: 4096,
+      max_new_tokens: options?.max_new_tokens ?? 4096,
       do_sample: false,
-    });
+    } as Parameters<typeof model.generate>[0]);
     const sequences =
       outputs && typeof outputs === "object" && "sequences" in outputs
         ? (outputs as { sequences: import("@huggingface/transformers").Tensor }).sequences
@@ -255,13 +266,13 @@ async function tryTransformers(onProgress?: ProgressCallback): Promise<LocalLlmI
         ? await loadGemma4Generator(modelId, onProgress)
         : await (async () => {
             const generator = await loadPhi4Generator(modelId, onProgress);
-            return async (system: string, user: string) => {
+            return async (system: string, user: string, options?: LlmGenerateOptions) => {
               const messages = [
                 { role: "system", content: system },
                 { role: "user", content: user },
               ];
               const output = await generator(messages, {
-                max_new_tokens: 4096,
+                max_new_tokens: options?.max_new_tokens ?? 4096,
                 temperature: 0.2,
               });
               return extractTransformersText(output);
@@ -334,17 +345,91 @@ export function ensureLocalLlm(onProgress?: ProgressCallback): Promise<LocalLlmI
   return initPromise;
 }
 
-export async function localLlmGenerate(system: string, user: string): Promise<string> {
+export async function localLlmGenerate(
+  system: string,
+  user: string,
+  options?: LlmGenerateOptions,
+): Promise<string> {
   const llm = await ensureLocalLlm();
-  return llm.generate(system, user);
+  return llm.generate(system, user, options);
 }
 
-export async function generateSearchQueries(prompt: string) {
-  const text = await localLlmGenerate(
-    GENERATE_QUERIES_SYSTEM,
-    buildGenerateQueriesUserPrompt(prompt),
-  );
-  return parseModelJson<{ queries: Record<string, { query: string; numResults: number }> }>(text);
+const QUERY_GEN_TIMEOUT_MS = 90_000;
+const QUERY_GEN_MAX_TOKENS = 768;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+export async function generateSearchQueries(
+  prompt: string,
+  _enabledReligions?: Partial<Record<string, boolean>>,
+) {
+  await ensureLocalLlm();
+
+  let text: string;
+  try {
+    text = await withTimeout(
+      localLlmGenerate(
+        GENERATE_QUERIES_SYSTEM,
+        buildGenerateQueriesUserPrompt(prompt),
+        { max_new_tokens: QUERY_GEN_MAX_TOKENS },
+      ),
+      QUERY_GEN_TIMEOUT_MS,
+      "Query generation",
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/timed out/i.test(message)) {
+      throw new QueryGenerationError("timeout", message);
+    }
+    throw new QueryGenerationError("model", message);
+  }
+
+  const textRefusal = detectRefusalInText(text);
+  if (textRefusal) {
+    throw new QueryGenerationError("refusal", textRefusal);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseModelJson(text);
+  } catch {
+    const refusal = detectRefusalInText(text);
+    if (refusal) {
+      throw new QueryGenerationError("refusal", refusal);
+    }
+    throw new QueryGenerationError(
+      "parse",
+      "The model did not return valid JSON for search queries.",
+    );
+  }
+
+  const jsonRefusal = detectRefusalInParsed(parsed);
+  if (jsonRefusal) {
+    throw new QueryGenerationError("refusal", jsonRefusal);
+  }
+
+  if (!validateSearchQueries(parsed)) {
+    throw new QueryGenerationError(
+      "parse",
+      "The model returned search queries in an unexpected format.",
+    );
+  }
+
+  return normalizeSearchQueries(parsed);
 }
 
 export type SearchSynthesisResponse = {

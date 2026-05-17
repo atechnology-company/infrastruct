@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { marked } from "marked";
 import { ChevronDown, ExternalLink, X } from "lucide-react";
-import { generateSearchQueries } from "@/lib/local-llm";
+import {
+  generateSearchQueries,
+  QueryGenerationError,
+  userMessageForQueryError,
+} from "@/lib/local-llm";
 import { searchWithSearx } from "@/lib/searx-client";
 import { isReligionKey, type ReligionKey } from "@/lib/religions";
 
@@ -153,6 +157,10 @@ export function SearchingScreen({
     ),
   );
   const [statusText, setStatusText] = useState("searching...");
+  const [queryGenError, setQueryGenError] = useState<{
+    code: "refusal" | "timeout" | "parse" | "model";
+    message: string;
+  } | null>(null);
   const [currentSource, setCurrentSource] = useState(0);
   const [streamStarted, setStreamStarted] = useState(false);
   const [scrapingProgress, setScrapingProgress] = useState<string | null>(null);
@@ -279,6 +287,7 @@ export function SearchingScreen({
     async function fetchQueries() {
       log('fetchQueries: called');
       setStatusText("searching...");
+      setQueryGenError(null);
       log('fetchQueries: setStatusText searching...');
       setQueries(null);
       log('fetchQueries: setQueries null');
@@ -293,7 +302,7 @@ export function SearchingScreen({
       );
       try {
         log("Generating queries locally for prompt:", prompt);
-        const data = await generateSearchQueries(prompt);
+        const data = await generateSearchQueries(prompt, enabledReligions);
         if (data?.queries) {
           for (const key of Object.keys(data.queries)) {
             if (isReligionKey(key) && !enabledReligions[key]) {
@@ -303,44 +312,28 @@ export function SearchingScreen({
         }
         log("Queries received:", data);
 
-        // Validate queries format
-        log('fetchQueries: validating queries', data.queries);
-        const valid =
-          data &&
-          typeof data === "object" &&
-          data.queries &&
-          typeof data.queries === "object" &&
-          SEARCH_CATEGORIES.every(
-            (r) =>
-              data.queries[r.key] &&
-              typeof data.queries[r.key].query === "string" &&
-              data.queries[r.key].query.length > 0 &&
-              (typeof data.queries[r.key].numResults === "number" || typeof data.queries[r.key].numResults === "string")
-          );
-        // If numResults is a string, try to parse it as a number
-        if (valid) {
-          SEARCH_CATEGORIES.forEach((r) => {
-            if (typeof data.queries[r.key].numResults === "string") {
-              const n = parseInt(String(data.queries[r.key].numResults), 10);
-              if (!isNaN(n)) data.queries[r.key].numResults = n;
-            }
-          });
-        }
-
-        if (!cancelled && valid) {
-          log('fetchQueries: valid queries, setting state');
+        if (!cancelled) {
+          log("fetchQueries: valid queries, setting state");
           setQueries(data.queries);
           setStatusText("searching...");
           log("Valid queries set:", data.queries);
-        } else if (!cancelled) {
-          log('fetchQueries: invalid queries format');
-          setStatusText("error");
-          log("Invalid queries format received:", data);
         }
       } catch (err) {
-        log('fetchQueries: error', err);
+        if (cancelled) return;
+        log("fetchQueries: error", err);
+        const qErr =
+          err instanceof QueryGenerationError
+            ? err
+            : new QueryGenerationError(
+                "model",
+                err instanceof Error ? err.message : "Query generation failed",
+              );
+        setQueryGenError({
+          code: qErr.code,
+          message: userMessageForQueryError(qErr),
+        });
         setStatusText("error");
-        log("Error fetching queries:", err);
+        setIsStopped(true);
       }
     }
     log('Effect: calling fetchQueries');
@@ -410,14 +403,15 @@ export function SearchingScreen({
               log('fetchAndScrapeConcurrent: setCurrentSiteIdx/Title', r.key, queries[r.key]?.query);
 
               let searchData: { results: any[]; usedEngine: string } | null = null;
-              let usedEngine = "searx";
+              let usedEngine = "search";
+              let searchError: unknown = null;
 
               try {
-                log("fetchAndScrapeConcurrent: Searx search for", r.key);
-                setCurrentEngine((prev) => ({ ...prev, [r.key]: "searx" }));
+                log("fetchAndScrapeConcurrent: web search for", r.key);
+                setCurrentEngine((prev) => ({ ...prev, [r.key]: "search" }));
                 setCurrentSiteTitle((prev) => ({
                   ...prev,
-                  [r.key]: "Searching with Searx...",
+                  [r.key]: "Searching the web...",
                 }));
 
                 const searxData = await searchWithSearx(query, r.key, numResults, {
@@ -436,10 +430,11 @@ export function SearchingScreen({
                   ...prev,
                   [r.key]: searxData.usedMirrors.length
                     ? `Results from: ${searxData.usedMirrors.join(", ")}`
-                    : `Found ${searxData.results.length} sources via Searx`,
+                    : `Found ${searxData.results.length} sources`,
                 }));
               } catch (err) {
-                log("fetchAndScrapeConcurrent: Searx error for", r.key, err);
+                searchError = err;
+                log("fetchAndScrapeConcurrent: search error for", r.key, err);
               }
 
               if (!searchData?.results?.length) {
@@ -448,13 +443,16 @@ export function SearchingScreen({
                   [r.key]: [
                     {
                       religion: r.label,
-                      title: "No results found (Searx failed)",
+                      title: "No results found",
                       link: "",
                       color: COLORS[r.key as keyof typeof COLORS],
                       loading: false,
                       query,
                       filled: true,
-                      snippet: "Searx search failed. Try again later.",
+                      snippet:
+                        searchError instanceof Error
+                          ? searchError.message
+                          : "Web search failed. Try again later.",
                       engine: "none",
                     },
                   ],
@@ -864,7 +862,33 @@ export function SearchingScreen({
       </div>
 
       <div className="max-w-3xl w-full mx-auto">
-        <div className="flex flex-col gap-4">
+        <motion.div className="flex flex-col gap-4">
+          {queryGenError && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-red-700 bg-red-950/40 p-5"
+              role="alert"
+            >
+              <p
+                className="text-sm font-bold uppercase tracking-wider text-red-300 mb-2"
+                style={{ fontFamily: "Chivo Mono, monospace" }}
+              >
+                {queryGenError.code === "refusal"
+                  ? "Search blocked by the model"
+                  : "Could not plan this search"}
+              </p>
+              <p className="text-gray-200 text-sm leading-relaxed">{queryGenError.message}</p>
+              {queryGenError.code === "refusal" && (
+                <p className="text-gray-500 text-xs mt-3">
+                  The on-device model declined to generate search queries for this topic
+                  (policy, safety, or censorship). Try rephrasing, or use a different browser
+                  with built-in AI enabled.
+                </p>
+              )}
+            </motion.div>
+          )}
+
           {/* Render Religions */}
           {RELIGIONS.map((r) => {
             const section = results?.sections?.[r.key];
@@ -933,12 +957,26 @@ export function SearchingScreen({
                         className="space-y-2"
                       >
                         <motion.div
-                          className={`text-lg font-bold uppercase ${showError ? "text-red-300" : "text-white"}`}
+                          className={`text-lg font-bold uppercase ${queryGenError || showError ? "text-red-300" : "text-white"}`}
                           style={{ fontFamily: "Chivo Mono, monospace" }}
-                          animate={{ opacity: [0.5, 1, 0.5] }}
-                          transition={{ repeat: Infinity, duration: 2 }}
+                          animate={
+                            queryGenError || showError
+                              ? { opacity: 1 }
+                              : { opacity: [0.5, 1, 0.5] }
+                          }
+                          transition={
+                            queryGenError || showError
+                              ? { duration: 0.2 }
+                              : { repeat: Infinity, duration: 2 }
+                          }
                         >
-                          {showError ? "SEARCH FAILED" : (currentSiteTitle[r.key] || "WAITING...").toUpperCase()}
+                          {queryGenError
+                            ? queryGenError.code === "refusal"
+                              ? "QUERY BLOCKED"
+                              : "QUERY FAILED"
+                            : showError
+                              ? "SEARCH FAILED"
+                              : (currentSiteTitle[r.key] || "WAITING...").toUpperCase()}
                         </motion.div>
                         {currentEngine[r.key] && currentEngine[r.key] !== 'none' && (
                           <div className="text-xs text-gray-500 uppercase" style={{ fontFamily: "Chivo Mono, monospace" }}>
@@ -1105,7 +1143,7 @@ export function SearchingScreen({
               </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
     </motion.div>
   );
