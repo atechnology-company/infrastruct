@@ -45,6 +45,8 @@ export type ModelLoadState = {
   tier?: ModelTier;
   deviceMemoryGb?: number | null;
   files?: ModelFileProgress[];
+  loadedBytes?: number;
+  totalBytes?: number;
 };
 
 export { getDeviceCapabilitySnapshot, getTransformersModelCandidates };
@@ -104,12 +106,14 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
     backend: "prompt-api",
   });
 
-  const trackPrompt = createPromptApiProgressTracker(({ progress, message, files }) => {
+  const trackPrompt = createPromptApiProgressTracker(({ progress, message, loadedBytes, totalBytes }) => {
     onProgress?.({
       status: "loading",
       progress,
       message,
-      files,
+      files: [],
+      loadedBytes,
+      totalBytes,
       backend: "prompt-api",
     });
   });
@@ -142,12 +146,14 @@ async function tryPromptApi(onProgress?: ProgressCallback): Promise<{
 }
 
 function transformersProgressCallback(onProgress?: ProgressCallback) {
-  const track = createDownloadProgressTracker(({ progress, message, files }) => {
+  const track = createDownloadProgressTracker(({ progress, message, files, loadedBytes, totalBytes }) => {
     onProgress?.({
       status: "loading",
       progress,
       message,
       files,
+      loadedBytes,
+      totalBytes,
       backend: "transformers",
     });
   });

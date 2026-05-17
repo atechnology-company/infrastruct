@@ -34,4 +34,32 @@ describe("createDownloadProgressTracker", () => {
 
     expect(lastProgress).toBe(75);
   });
+
+  test("does not drop when a new large file appears in the manifest", () => {
+    let lastProgress = 0;
+    const track = createDownloadProgressTracker((s) => {
+      expect(s.progress).toBeGreaterThanOrEqual(lastProgress);
+      lastProgress = s.progress;
+    });
+
+    track({
+      status: "progress",
+      file: "onnx/a.onnx",
+      loaded: 90,
+      total: 100,
+    });
+    track({
+      status: "initiate",
+      file: "onnx/b.onnx",
+    });
+    track({
+      status: "progress_total",
+      files: {
+        "onnx/a.onnx": { loaded: 90, total: 100 },
+        "onnx/b.onnx": { loaded: 0, total: 500 },
+      },
+    });
+
+    expect(lastProgress).toBeGreaterThanOrEqual(90);
+  });
 });

@@ -3,33 +3,14 @@
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ModelLoadState } from "@/lib/local-llm";
+import { useSmoothProgress } from "@/hooks/use-smooth-progress";
 
-const MAX_VISIBLE_FILES = 8;
+const MAX_VISIBLE_FILES = 10;
 
-function ProgressTrack({
-  value,
-  className,
-  barClassName,
-}: {
-  value: number;
-  className?: string;
-  barClassName?: string;
-}) {
-  const width = `${Math.max(2, Math.min(100, value))}%`;
-  return (
-    <motion.div
-      className={`h-0.5 w-full rounded-full bg-gray-800 overflow-hidden ${className ?? ""}`}
-      role="progressbar"
-      aria-valuenow={value}
-      aria-valuemin={0}
-      aria-valuemax={100}
-    >
-      <div
-        className={`h-full rounded-full transition-[width] duration-500 ease-out ${barClassName ?? "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500"}`}
-        style={{ width }}
-      />
-    </motion.div>
-  );
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function ModelLoadingBar({
@@ -45,17 +26,35 @@ export function ModelLoadingBar({
       loadState.status === "loading" ||
       loadState.status === "error");
 
-  const activeFiles = useMemo(() => {
+  const loading = loadState.status === "checking" || loadState.status === "loading";
+  const smoothProgress = useSmoothProgress(loadState.progress, loading && show);
+
+  const displayPercent = loadState.status === "error" ? 100 : smoothProgress;
+
+  const fileSummary = useMemo(() => {
     const files = loadState.files ?? [];
-    const inFlight = files.filter((f) => f.status !== "done");
-    const list = inFlight.length > 0 ? inFlight : files;
-    return list.slice(0, MAX_VISIBLE_FILES);
+    const active = files.filter((f) => f.status !== "done").length;
+    const done = files.filter((f) => f.status === "done").length;
+    if (files.length === 0) return null;
+    return { total: files.length, active, done };
   }, [loadState.files]);
 
-  const hiddenCount = useMemo(() => {
-    const total = loadState.files?.length ?? 0;
-    return Math.max(0, total - MAX_VISIBLE_FILES);
+  const visibleFiles = useMemo(() => {
+    const files = loadState.files ?? [];
+    return files.slice(0, MAX_VISIBLE_FILES);
   }, [loadState.files]);
+
+  const hiddenCount = Math.max(0, (loadState.files?.length ?? 0) - MAX_VISIBLE_FILES);
+
+  const loadedBytes = loadState.loadedBytes;
+  const totalBytes = loadState.totalBytes;
+
+  const byteHint =
+    loadedBytes != null && totalBytes != null && totalBytes > 0
+      ? `${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)}`
+      : fileSummary
+        ? `${fileSummary.done} of ${fileSummary.total} files ready`
+        : null;
 
   return (
     <AnimatePresence>
@@ -67,73 +66,61 @@ export function ModelLoadingBar({
           transition={{ duration: 0.25 }}
           className="w-full"
         >
-          <motion.div
-            className="flex items-center justify-between gap-3 text-xs text-gray-500 mb-1.5"
-            layout
-          >
+          <motion.div className="flex items-center justify-between gap-3 text-xs text-gray-500 mb-1.5">
             <span className="truncate">
               {loadState.status === "error"
                 ? loadState.message
                 : loadState.message || "Loading AI model…"}
             </span>
             {loadState.status !== "error" && (
-              <span className="tabular-nums shrink-0">{Math.round(loadState.progress)}%</span>
+              <span className="tabular-nums shrink-0">{Math.round(displayPercent)}%</span>
             )}
           </motion.div>
 
-          <ProgressTrack
-            value={loadState.status === "error" ? 100 : loadState.progress}
-            barClassName={
-              loadState.status === "error"
-                ? "bg-red-500"
-                : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500"
-            }
-          />
-
-          {loadState.status !== "error" && activeFiles.length > 0 && (
-            <motion.ul
-              className="mt-3 space-y-2"
-              layout
+          <div
+            className="h-1 w-full rounded-full bg-gray-800 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={displayPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <motion.div
+              className={`h-full rounded-full ${
+                loadState.status === "error"
+                  ? "bg-red-500"
+                  : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500"
+              }`}
               initial={false}
-            >
-              {activeFiles.map((file) => (
-                <motion.li
+              animate={{ width: `${Math.max(2, displayPercent)}%` }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
+            />
+          </div>
+
+          {byteHint && loadState.status !== "error" && (
+            <p className="mt-2 text-[10px] text-gray-600 tabular-nums">{byteHint}</p>
+          )}
+
+          {loadState.status !== "error" && visibleFiles.length > 0 && (
+            <ul className="mt-2 space-y-0.5 max-h-24 overflow-y-auto">
+              {visibleFiles.map((file) => (
+                <li
                   key={file.id}
-                  layout
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="space-y-1"
+                  className="flex items-center justify-between gap-2 text-[10px] text-gray-600 font-mono"
                 >
-                  <motion.div
-                    className="flex items-center justify-between gap-2 text-[10px] text-gray-600"
-                    layout
-                  >
-                    <span className="truncate font-mono">{file.label}</span>
-                    <span className="tabular-nums shrink-0">
-                      {file.total > 0
+                  <span className="truncate">{file.label}</span>
+                  <span className="shrink-0 text-gray-500">
+                    {file.status === "done"
+                      ? "done"
+                      : file.total > 0
                         ? `${Math.round(file.progress)}%`
-                        : file.status === "pending"
-                          ? "…"
-                          : ""}
-                    </span>
-                  </motion.div>
-                  <ProgressTrack
-                    value={file.progress}
-                    barClassName={
-                      file.status === "done"
-                        ? "bg-gray-600"
-                        : "bg-gray-600/80 bg-gradient-to-r from-violet-600/70 via-fuchsia-600/70 to-amber-600/70"
-                    }
-                  />
-                </motion.li>
+                        : "…"}
+                  </span>
+                </li>
               ))}
               {hiddenCount > 0 && (
-                <li className="text-[10px] text-gray-600 pl-0.5">
-                  +{hiddenCount} more file{hiddenCount === 1 ? "" : "s"}
-                </li>
+                <li className="text-[10px] text-gray-600">+{hiddenCount} more files</li>
               )}
-            </motion.ul>
+            </ul>
           )}
         </motion.div>
       )}

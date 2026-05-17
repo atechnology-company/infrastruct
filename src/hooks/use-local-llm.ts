@@ -5,6 +5,7 @@ import {
   ensureLocalLlm,
   type ModelLoadState,
 } from "@/lib/local-llm";
+import { wrapMonotonicModelProgress } from "@/lib/monotonic-progress";
 
 const initialState: ModelLoadState = {
   status: "idle",
@@ -16,9 +17,12 @@ const initialState: ModelLoadState = {
 export function useLocalLlm() {
   const [loadState, setLoadState] = useState<ModelLoadState>(initialState);
 
-  const onProgress = useCallback((state: ModelLoadState) => {
-    setLoadState(state);
-  }, []);
+  const onProgress = useCallback(
+    wrapMonotonicModelProgress((state) => {
+      setLoadState(state);
+    }),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
